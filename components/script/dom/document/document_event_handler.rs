@@ -904,9 +904,9 @@ impl DocumentEventHandler {
         }
 
         // https://w3c.github.io/uievents/#hit-test
-        // Prevent mouse event if element is disabled.
-        // TODO: also inert.
-        if element.is_actually_disabled() {
+        // Prevent mouse event if element is disabled or inert.
+        // FIXME: Implement the new spec: https://w3c.github.io/pointerevents/#hit-test
+        if element.is_actually_disabled() || element.upcast::<Node>().is_inert() {
             return;
         }
 

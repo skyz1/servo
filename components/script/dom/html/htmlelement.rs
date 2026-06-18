@@ -222,6 +222,10 @@ impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
     // https://html.spec.whatwg.org/multipage/#dom-hidden
     make_bool_setter!(cx, SetHidden, "hidden");
 
+    // https://html.spec.whatwg.org/multipage/#the-inert-attribute
+    make_bool_getter!(Inert, "inert");
+    make_bool_setter!(cx, SetInert, "inert");
+
     // https://html.spec.whatwg.org/multipage/#globaleventhandlers
     global_event_handlers!(NoOnload);
 
