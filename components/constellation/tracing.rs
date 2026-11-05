@@ -96,6 +96,7 @@ mod from_embedder {
                 };
             }
             match self.event {
+                InputEvent::CloseRequest => target_variant!("CloseRequest"),
                 InputEvent::EditingAction(..) => target_variant!("EditingAction"),
                 #[cfg(feature = "gamepad")]
                 InputEvent::Gamepad(..) => target_variant!("Gamepad"),

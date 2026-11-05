@@ -26,6 +26,9 @@ pub trait HostTrait {
     /// Back/forward state has changed.
     /// Back/forward buttons need to be disabled/enabled.
     fn on_history_changed(&self, can_go_back: bool, can_go_forward: bool);
+    /// The page did not handle a close request and there is no history to go back to,
+    /// so the host should perform its default back action (e.g. leave the app).
+    fn on_close_request_unhandled(&self) {}
     /// Servo finished shutting down.
     fn on_shutdown_complete(&self);
     /// A text input is focused.

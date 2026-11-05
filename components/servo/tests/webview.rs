@@ -25,10 +25,10 @@ use net::test_util::{make_body, make_server, replace_host_table};
 use servo::JSValue::Boolean;
 use servo::profile_traits::mem::MemoryReportResult;
 use servo::{
-    CreateNewWebViewRequest, Cursor, EmbedderControl, InputEvent, InputMethodType, JSValue,
-    LoadStatus, MouseButton, MouseLeftViewportEvent, MouseMoveEvent, PrefValue, RenderingContext,
-    Scroll, SimpleDialog, Theme, WebView, WebViewBuilder, WebViewDelegate, WebViewPoint,
-    WebViewVector,
+    CreateNewWebViewRequest, Cursor, EmbedderControl, InputEvent, InputEventResult,
+    InputMethodType, JSValue, LoadStatus, MouseButton, MouseLeftViewportEvent, MouseMoveEvent,
+    PrefValue, RenderingContext, Scroll, SimpleDialog, Theme, WebView, WebViewBuilder,
+    WebViewDelegate, WebViewPoint, WebViewVector,
 };
 use servo_base::generic_channel::GenericCallback;
 use servo_config::prefs::Preferences;
@@ -815,6 +815,40 @@ fn test_can_go_forward_and_can_go_back() {
 
     assert!(webview.can_go_forward());
     assert!(!webview.can_go_back());
+}
+
+#[test]
+fn test_close_request() {
+    let servo_test = ServoTest::new();
+    let delegate = Rc::new(WebViewDelegateImpl::default());
+    let webview = WebViewBuilder::new(servo_test.servo(), servo_test.rendering_context.clone())
+        .delegate(delegate.clone())
+        .url(Url::parse("data:text/html,<!DOCTYPE html>").unwrap())
+        .build();
+    show_webview_and_wait_for_rendering_to_be_ready(&servo_test, &webview, &delegate);
+
+    let send_close_request = || {
+        *delegate.input_event_result.borrow_mut() = None;
+        webview.notify_input_event(InputEvent::CloseRequest);
+        servo_test.spin(|| delegate.input_event_result.borrow().is_none());
+        delegate.input_event_result.borrow().unwrap()
+    };
+
+    // Nothing is watching, so the embedder should do the alternative processing.
+    assert!(!send_close_request().contains(InputEventResult::Consumed));
+
+    let result = evaluate_javascript(
+        &servo_test,
+        webview.clone(),
+        "window.closed_watcher = false; \
+         new CloseWatcher().onclose = () => window.closed_watcher = true;",
+    );
+    assert!(result.is_ok());
+    assert!(send_close_request().contains(InputEventResult::Consumed));
+    assert_eq!(
+        evaluate_javascript(&servo_test, webview.clone(), "window.closed_watcher"),
+        Ok(JSValue::Boolean(true))
+    );
 }
 
 #[test]

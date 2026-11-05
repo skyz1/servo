@@ -51,6 +51,10 @@ pub struct InputEventOutcome {
 /// An input event that is sent from the embedder to Servo.
 #[derive(Clone, Debug, Deserialize, MallocSizeOf, Serialize)]
 pub enum InputEvent {
+    /// A platform-level close request, such as the Android back button.
+    /// See <https://html.spec.whatwg.org/multipage/#close-requests>. The result reports
+    /// [`InputEventResult::Consumed`] if the page handled it, e.g. by closing a dialog.
+    CloseRequest,
     EditingAction(ClipboardAction),
     #[cfg(feature = "gamepad")]
     Gamepad(GamepadEvent),
@@ -133,6 +137,7 @@ pub enum EditingAction {
 impl InputEvent {
     pub fn point(&self) -> Option<WebViewPoint> {
         match self {
+            InputEvent::CloseRequest => None,
             InputEvent::EditingAction(..) => None,
             #[cfg(feature = "gamepad")]
             InputEvent::Gamepad(..) => None,

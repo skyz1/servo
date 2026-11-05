@@ -43,6 +43,8 @@ internal class JNIServo {
 
     external fun goForward()
 
+    external fun requestClose()
+
     external fun loadUri(uri: String)
 
     external fun keydown(keycode: Int, unicode: Int)
@@ -79,6 +81,8 @@ internal class JNIServo {
         fun onUrlChanged(url: String)
 
         fun onHistoryChanged(canGoBack: Boolean, canGoForward: Boolean)
+
+        fun onCloseRequestUnhandled()
 
         fun onImeShow()
 

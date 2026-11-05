@@ -88,7 +88,9 @@ fun Servo(
         }
     }
     LaunchedEffect(servo, navigator) { navigator.consumeNavigationEvents(servo) }
-    BackHandler(enabled = navigator.canGoBack) { navigator.back() }
+    // Back is a close request: the page may close a dialog or CloseWatcher with it. If nothing
+    // handles it, Servo goes back in history or calls `Client.onCloseRequestUnhandled`.
+    BackHandler { servo.requestClose() }
     LaunchedEffect(experimentalModeEnabled) { servo.setExperimentalMode(experimentalModeEnabled) }
     DisposableEffect(servo) { onDispose { servo.glDispatcher.close() } }
 
@@ -323,6 +325,10 @@ internal constructor(
         scope.launch(glDispatcher) { jni.goForward() }
     }
 
+    fun requestClose() {
+        scope.launch(glDispatcher) { jni.requestClose() }
+    }
+
     fun loadUri(uri: String) {
         scope.launch(glDispatcher) { jni.loadUri(uri) }
     }
@@ -381,6 +387,9 @@ internal constructor(
         fun onTitleChanged(title: String)
 
         fun onUrlChanged(url: String)
+
+        /** Back was pressed, the page didn't handle it and there is no history to go back to. */
+        fun onCloseRequestUnhandled()
     }
 
     private class Callbacks(
@@ -426,6 +435,10 @@ internal constructor(
 
         override fun onUrlChanged(url: String) {
             scope.launch { client.onUrlChanged(url) }
+        }
+
+        override fun onCloseRequestUnhandled() {
+            scope.launch { client.onCloseRequestUnhandled() }
         }
 
         override fun onHistoryChanged(canGoBack: Boolean, canGoForward: Boolean) {

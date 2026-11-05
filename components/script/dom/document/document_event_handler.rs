@@ -261,6 +261,38 @@ pub(crate) struct DocumentEventHandler {
     drag_gesture: DomRefCell<Option<DragGesture>>,
 }
 
+/// What triggered a close request.
+/// <https://html.spec.whatwg.org/multipage/#close-requests>
+pub(crate) enum CloseRequestSource<'a> {
+    /// The Esc key on desktop platforms, with its keydown event and that event's target.
+    EscapeButton(&'a Event, &'a EventTarget),
+    /// The back button or back gesture on mobile platforms, which fires no events.
+    BackGesture,
+}
+
+impl CloseRequestSource<'_> {
+    /// Fire the "relevant events" for this close request, if any.
+    fn fire_events(&self, cx: &mut JSContext) {
+        match self {
+            Self::EscapeButton(event, target) => {
+                event.fire(cx, target);
+            },
+            // > On platforms where a back button is a potential close request, no event is
+            // > involved, so when the back button is pressed, the user agent proceeds directly to
+            // > process close watchers.
+            Self::BackGesture => {},
+        }
+    }
+
+    /// The event representing the fired events, or `None` if no events are fired.
+    fn event(&self) -> Option<&Event> {
+        match self {
+            Self::EscapeButton(event, _) => Some(event),
+            Self::BackGesture => None,
+        }
+    }
+}
+
 impl DocumentEventHandler {
     pub(crate) fn new(window: &Window) -> Self {
         Self {
@@ -426,6 +458,12 @@ impl DocumentEventHandler {
                     self.handle_keyboard_event(cx, keyboard_event)
                 },
                 InputEvent::Ime(ime_event) => self.handle_ime_event(cx, ime_event),
+                InputEvent::CloseRequest => {
+                    match self.close_request_steps(cx, CloseRequestSource::BackGesture) {
+                        true => InputEventResult::Consumed,
+                        false => InputEventResult::default(),
+                    }
+                },
                 #[cfg(feature = "gamepad")]
                 InputEvent::Gamepad(gamepad_event) => {
                     self.handle_gamepad_event(gamepad_event);
@@ -1818,7 +1856,7 @@ impl DocumentEventHandler {
         if keyboard_event.event.state == KeyState::Down &&
             keyboard_event.event.key == Key::Named(NamedKey::Escape)
         {
-            self.close_request_steps(cx, Some((event, target)));
+            self.close_request_steps(cx, CloseRequestSource::EscapeButton(event, target));
         } else {
             event.fire(cx, target);
         }
@@ -1860,12 +1898,12 @@ impl DocumentEventHandler {
 
     /// <https://html.spec.whatwg.org/multipage/#close-request-steps>
     ///
-    /// `event` is the event to fire for this close request, along with its target, if any.
+    /// Returns false if the user agent should do the alternative processing.
     pub(crate) fn close_request_steps(
         &self,
         cx: &mut JSContext,
-        event: Option<(&Event, &EventTarget)>,
-    ) {
+        source: CloseRequestSource,
+    ) -> bool {
         // Step 1. If document's fullscreen element is not null:
         let document = self.window.Document();
         if document.fullscreen_element().is_some() {
@@ -1874,39 +1912,43 @@ impl DocumentEventHandler {
             document.fully_exit_fullscreen(cx);
 
             // Step 1.2. Return.
-            return;
+            return true;
         }
 
         // Step 2. Optionally, skip to the step labeled alternative processing.
 
         // Step 3. Fire any relevant events, per UI Events or other relevant specifications. [UIEVENTS]
-        if let Some((event, target)) = event {
-            event.fire(cx, target);
-        }
-
         // Step 4. Let event be null if no such events are fired, or the Event object representing one of
         // the fired events otherwise. If multiple events are fired, which one is chosen is
         // implementation-defined.
-        let event = event.map(|(event, _)| event);
+        source.fire_events(cx);
+        let event = source.event();
 
         // Step 5. If event is not null, and its canceled flag is set, then return.
         if event.is_some_and(|event| event.flags().contains(EventFlags::Canceled)) {
-            return;
+            return true;
         }
 
         // Step 6. If document is not fully active, then return.
         if !document.is_fully_active() {
-            return;
+            return true;
         }
 
         // Step 7. Let closedSomething be the result of processing close watchers on document's
         // relevant global object.
-        self.window.process_close_watchers(cx);
+        let closed_something = self.window.process_close_watchers(cx);
 
         // Step 8. If closedSomething is true, then return.
+        if closed_something {
+            return true;
+        }
+
         // Step 9. Alternative processing: Otherwise, there was nothing watching for a close request.
         // The user agent may instead interpret this interaction as some other action, instead of
         // interpreting it as a close request.
+        //
+        // Alternative processing is left to the embedder.
+        false
     }
 
     fn handle_ime_event(&self, cx: &mut JSContext, event: ImeEvent) -> InputEventResult {

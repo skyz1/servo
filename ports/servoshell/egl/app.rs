@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use dpi::PhysicalSize;
@@ -12,10 +13,11 @@ use raw_window_handle::{DisplayHandle, RawWindowHandle, WindowHandle};
 use servo::{
     DeviceIndependentIntRect, DeviceIndependentPixel, DeviceIntSize, DevicePixel, DevicePoint,
     DeviceVector2D, EmbedderControl, EmbedderControlId, EventLoopWaker, ImeEvent, InputEvent,
-    KeyboardEvent, LoadStatus, MouseButton, MouseButtonAction, MouseButtonEvent, MouseMoveEvent,
-    Opts, Preferences, RefreshDriver, RenderingContext, ScreenGeometry, Scroll, Servo,
-    ServoBuilder, SimpleDialog, TouchEvent, TouchEventType, TouchId, TouchPointerType,
-    UserContentManager, WebView, WebViewId, WindowRenderingContext, convert_rect_to_css_pixel,
+    InputEventId, InputEventResult, KeyboardEvent, LoadStatus, MouseButton, MouseButtonAction,
+    MouseButtonEvent, MouseMoveEvent, Opts, Preferences, RefreshDriver, RenderingContext,
+    ScreenGeometry, Scroll, Servo, ServoBuilder, SimpleDialog, TouchEvent, TouchEventType, TouchId,
+    TouchPointerType, UserContentManager, WebView, WebViewId, WindowRenderingContext,
+    convert_rect_to_css_pixel,
 };
 use url::Url;
 
@@ -45,6 +47,9 @@ pub(crate) struct EmbeddedPlatformWindow {
     current_can_go_forward: Cell<bool>,
     /// The current load status of the active WebView.
     current_load_status: Cell<Option<LoadStatus>>,
+    /// The [`InputEventId`]s of the close requests that are currently being handled by Servo.
+    /// A set, since the user can trigger another back gesture before the previous one is handled.
+    pending_close_requests: RefCell<HashSet<InputEventId>>,
 
     id: ServoShellWindowId,
 }
@@ -213,6 +218,28 @@ impl PlatformWindow for EmbeddedPlatformWindow {
         self.host.on_panic(reason, backtrace);
     }
 
+    /// If the page did not handle a close request, perform the alternative processing:
+    /// go back in history or, failing that, let the host handle it (e.g. leave the app).
+    /// See <https://html.spec.whatwg.org/multipage/#close-requests>.
+    fn notify_input_event_handled(
+        &self,
+        webview: &WebView,
+        id: InputEventId,
+        result: InputEventResult,
+    ) {
+        if !self.pending_close_requests.borrow_mut().remove(&id) {
+            return;
+        }
+        if result.intersects(InputEventResult::Consumed | InputEventResult::DefaultPrevented) {
+            return;
+        }
+        if webview.can_go_back() {
+            webview.go_back(1);
+        } else {
+            self.host.on_close_request_unhandled();
+        }
+    }
+
     fn show_console_message(&self, level: servo::ConsoleLogLevel, message: &str) {
         log::log!(level.into(), "{message}");
     }
@@ -353,6 +380,7 @@ impl App {
             current_can_go_back: Default::default(),
             current_can_go_forward: Default::default(),
             current_load_status: Default::default(),
+            pending_close_requests: Default::default(),
         });
         self.state.open_window(
             platform_window,
@@ -432,6 +460,19 @@ impl App {
     pub fn go_back(&self) {
         self.window()
             .queue_user_interface_command(UserInterfaceCommand::Back);
+        self.spin_event_loop();
+    }
+
+    /// Send a close request (e.g. from the Android back button) to the active webview.
+    pub fn request_close(&self) {
+        let window = self.window();
+        let Some(webview) = window.active_or_newest_webview() else {
+            return;
+        };
+        let id = webview.notify_input_event(InputEvent::CloseRequest);
+        if let Some(platform_window) = window.platform_window().as_headed_window() {
+            platform_window.pending_close_requests.borrow_mut().insert(id);
+        }
         self.spin_event_loop();
     }
 

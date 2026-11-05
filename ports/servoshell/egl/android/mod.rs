@@ -344,6 +344,19 @@ pub extern "C" fn Java_org_servo_servoview_JNIServo_goBack<'local>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn Java_org_servo_servoview_JNIServo_requestClose<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+) {
+    env.with_env(|env| -> jni::errors::Result<_> {
+        debug!("requestClose");
+        call(env, |s| s.request_close());
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn Java_org_servo_servoview_JNIServo_goForward<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
@@ -676,6 +689,21 @@ impl HostTrait for HostCallbacks {
                     jni_str!("onHistoryChanged"),
                     jni_sig!("(ZZ)V"),
                     &[can_go_back, can_go_forward],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    fn on_close_request_unhandled(&self) {
+        debug!("on_close_request_unhandled");
+        self.jvm
+            .attach_current_thread(|env| -> Result<(), Error> {
+                env.call_method(
+                    callback_ref(),
+                    jni_str!("onCloseRequestUnhandled"),
+                    jni_sig!("()V"),
+                    &[],
                 )?;
                 Ok(())
             })

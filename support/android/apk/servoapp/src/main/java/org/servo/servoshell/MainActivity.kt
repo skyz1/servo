@@ -316,6 +316,11 @@ class MainActivity : ComponentActivity(), Servo.Client {
         currentTitle = title
     }
 
+    override fun onCloseRequestUnhandled() {
+        // Matches the system default back behavior for a root activity.
+        moveTaskToBack(true)
+    }
+
     override fun onUrlChanged(url: String) {
         urlTextFieldState.edit { replace(0, length, url) }
         currentUrl = url
