@@ -164,7 +164,7 @@ impl Document {
 
         // Step 2
         // > If doc is not fully active or doc’s fullscreen element is null, then reject promise with a TypeError exception and return promise.
-        if !self.is_fully_active() || self.fullscreen_element().is_none() {
+        if !self.is_fully_active() || self.overlay_handler().fullscreen_element().is_none() {
             promise.reject_error(
                 cx,
                 Error::Type(
@@ -176,7 +176,7 @@ impl Document {
 
         // TODO(#42067): Implement step 3-7, handling fullscreen's propagation across navigables.
 
-        let element = self.fullscreen_element().unwrap();
+        let element = self.overlay_handler().fullscreen_element().unwrap();
         let window = self.window();
 
         // Step 10
@@ -321,7 +321,9 @@ impl TaskOnce for ElementPerformFullscreenEnter {
         // TODO(#42067): Implement step 11-13
         // The following operations is based on the old version of the specs.
         element.set_fullscreen_state(cx.no_gc(), true);
-        document.set_fullscreen_element(Some(&element));
+        document
+            .overlay_handler()
+            .set_fullscreen_element(Some(&element));
         document.upcast::<EventTarget>().fire_event_with_params(
             cx,
             atom!("fullscreenchange"),
@@ -362,7 +364,7 @@ impl TaskOnce for ElementPerformFullscreenExit {
         // TODO(#42067): Implement step 10-15
         // The following operations is based on the old version of the specs.
         element.set_fullscreen_state(cx.no_gc(), false);
-        document.set_fullscreen_element(None);
+        document.overlay_handler().set_fullscreen_element(None);
         document.upcast::<EventTarget>().fire_event_with_params(
             cx,
             atom!("fullscreenchange"),

@@ -5067,7 +5067,7 @@ impl VirtualMethods for Element {
         }
 
         let document = self.owner_document_unrooted(cx.no_gc());
-        let fullscreen = document.fullscreen_element();
+        let fullscreen = document.overlay_handler().fullscreen_element();
         if fullscreen.as_deref() == Some(self) {
             self.owner_document().exit_fullscreen(cx);
         }
@@ -5404,6 +5404,7 @@ impl Element {
     pub(crate) fn set_modal_state(&self, no_gc: &NoGC, value: bool) {
         self.set_state(no_gc, ElementState::MODAL, value);
         self.owner_document_unrooted(no_gc)
+            .overlay_handler()
             .update_topmost_modal(no_gc);
     }
 
